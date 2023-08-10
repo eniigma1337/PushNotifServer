@@ -58,9 +58,23 @@ async function fetchDataFromFirestore() {
   }
 }
 
-async function fetchDataFromSecondApi() {
+async function fetchDataFromSecondApi(token, callMessage) {
   try {
-    const x = await axios.post(secondApiUrl);
+    const postData = {
+      fcmToken: token,
+      message: callMessage,
+    };
+    const headers = {
+      "Content-Type": "application/json", // Set the appropriate content type
+      // Add any other headers you need
+    };
+    const x = await axios
+      .post(secondApiUrl, postData, { headers })
+      .then((response) => {
+      })
+      .catch((error) => {
+        console.error("Error:", error);
+      });
   } catch (error) {
     console.error("Error fetching data from second API:", error);
     throw error;
@@ -70,18 +84,23 @@ async function fetchDataFromSecondApi() {
 async function main() {
   try {
     let liveCallsArr = await fetchDataFromFirstApi();
-    let z = liveCallsArr
+    let z = liveCallsArr;
     let y = z.reduce((max, item) => {
-        return item.attributes.OCCURRENCE_TIME > max
-          ? item.attributes.OCCURRENCE_TIME
-          : max;
-      }, (z[0].attributes.OCCURRENCE_TIME));
-
-    let x = dataArray.reduce((max, item) => {
       return item.attributes.OCCURRENCE_TIME > max
         ? item.attributes.OCCURRENCE_TIME
         : max;
-    }, (typeof(dataArray[0]?.attributes?.OCCURRENCE_TIME) !== "undefined") ? dataArray[0].attributes.OCCURRENCE_TIME : y);
+    }, z[0].attributes.OCCURRENCE_TIME);
+
+    let x = dataArray.reduce(
+      (max, item) => {
+        return item.attributes.OCCURRENCE_TIME > max
+          ? item.attributes.OCCURRENCE_TIME
+          : max;
+      },
+      typeof dataArray[0]?.attributes?.OCCURRENCE_TIME !== "undefined"
+        ? dataArray[0].attributes.OCCURRENCE_TIME
+        : y
+    );
 
     // dataArray = [
     //     {
@@ -103,25 +122,30 @@ async function main() {
     //     },
     //   ];
 
-    dataArray = []
+    dataArray = [];
     liveCallsArr.forEach((item) => {
       if (item.attributes.OCCURRENCE_TIME > x) {
         dataArray.push(item);
       }
     });
 
-
     let firestoreData = await fetchDataFromFirestore();
-    firestoreData.forEach((user,index) => {
-        if(!(typeof(user?.location?.enabled) === "undefined")){
-            dataArray.forEach((item) => {
-                if(coordsCompare(user.location.coords.latitude,user.location.coords.longitude,item.geometry.y,item.geometry.x)){
-                    fetchDataFromSecondApi()
-                }
-              });
-        }
-      });
-
+    firestoreData.forEach((user, index) => {
+      if (!(typeof user?.location?.enabled === "undefined") && !(typeof user?.fcmToken === "undefined")) {
+        dataArray.forEach((item) => {
+          if (
+            coordsCompare(
+              user.location.coords.latitude,
+              user.location.coords.longitude,
+              item.geometry.y,
+              item.geometry.x
+            )
+          ) {
+            fetchDataFromSecondApi({token : user.fcmToken, message: item.attributes.CALL_TYPE});
+          }
+        });
+      }
+    });
   } catch (error) {
     console.error("Error:", error);
   }
@@ -142,7 +166,7 @@ function coordsCompare(lat1, lon1, lat2, lon2) {
 
   const distance = R * c; // Distance in kilometers
 
-  if (distance < 0.5) {
+  if (distance < 3) {
     return true;
   } else {
     return false;
